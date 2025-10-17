@@ -25,6 +25,7 @@ class ThumbnailSettings:
     random_seed: Optional[int] = None
     output_path: Path = Path("thumbnail.jpg")
     output_format: str = "jpg"  # "jpg" or "png"
+    resize_to: Optional[Tuple[int, int]] = None
 
 
 class ThumbnailGenerator:
@@ -79,7 +80,8 @@ class ThumbnailGenerator:
         if progress_callback:
             progress_callback(90)
 
-        return watermarked
+        resized = self._maybe_resize(watermarked, thumbnail_settings.resize_to)
+        return resized
 
     def _generate_single(
         self,
@@ -152,6 +154,17 @@ class ThumbnailGenerator:
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         return output_path
+
+    @staticmethod
+    def _maybe_resize(image: Image.Image, target_size: Optional[Tuple[int, int]]) -> Image.Image:
+        if not target_size:
+            return image
+        width, height = target_size
+        width = max(1, int(width))
+        height = max(1, int(height))
+        if (image.width, image.height) == (width, height):
+            return image
+        return image.resize((width, height), Image.Resampling.LANCZOS)
 
     @staticmethod
     def _resolve_format(output_format: str) -> str:

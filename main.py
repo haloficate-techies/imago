@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from PIL import Image
 from PyQt5.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal
@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QFrame,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -24,7 +25,9 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QProgressBar,
     QSlider,
+    QScrollArea,
     QSpinBox,
+    QSplitter,
     QVBoxLayout,
     QWidget,
     QColorDialog,
@@ -107,10 +110,217 @@ class PreviewWorker(QObject):
 
 
 class MainWindow(QMainWindow):
+    RESIZE_PRESETS = [
+        ("YouTube Thumbnail (1280 x 720)", (1280, 720)),
+        ("Twitter Card (640 x 360)", (640, 360)),
+    ]
+    APP_STYLE = """
+    QMainWindow {
+        background-color: #f3f4f6;
+        color: #1f2933;
+    }
+    QWidget {
+        font-family: 'Segoe UI', 'Inter', Arial, sans-serif;
+        font-size: 10pt;
+        color: #1f2933;
+    }
+    QWidget#rootSurface {
+        background-color: #f3f4f6;
+    }
+    QScrollArea {
+        border: none;
+        background: transparent;
+    }
+    QScrollArea > QWidget > QWidget {
+        background: transparent;
+    }
+    QWidget#controlsContent {
+        background-color: transparent;
+        padding: 8px 0;
+    }
+    QGroupBox {
+        border: 1px solid #d1d5db;
+        border-radius: 16px;
+        margin-top: 18px;
+        padding: 18px 22px;
+        background-color: #ffffff;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        subcontrol-position: top left;
+        padding: 4px 10px;
+        color: #2563eb;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    }
+    QLabel {
+        color: #1f2933;
+    }
+    QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+        background-color: #f9fafb;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 6px 10px;
+        color: #1f2937;
+        selection-background-color: #2563eb;
+    }
+    QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
+        border: 1px solid #2563eb;
+    }
+    QComboBox QAbstractItemView {
+        background-color: #ffffff;
+        border: 1px solid #cbd5f5;
+        border-radius: 8px;
+        color: #1f2933;
+        padding: 4px 0;
+        outline: none;
+        selection-background-color: #dbeafe;
+        selection-color: #1e3a8a;
+    }
+    QComboBox QListView::item,
+    QComboBox QAbstractItemView::item {
+        background-color: #ffffff;
+        color: #1f2933;
+        padding: 6px 12px;
+    }
+    QComboBox QListView::item:hover,
+    QComboBox QAbstractItemView::item:hover {
+        background-color: #e0f2fe;
+        color: #1d4ed8;
+    }
+    QComboBox QListView::item:selected,
+    QComboBox QAbstractItemView::item:selected {
+        background-color: #dbeafe;
+        color: #1e3a8a;
+    }
+    QPushButton {
+        background-color: #e2e8f0;
+        border: 1px solid #cbd5f5;
+        border-radius: 8px;
+        padding: 9px 16px;
+        color: #1f2933;
+        font-weight: 600;
+    }
+    QPushButton:hover {
+        background-color: #dbeafe;
+        border-color: #93c5fd;
+        color: #1e3a8a;
+    }
+    QPushButton:disabled {
+        background-color: #f1f5f9;
+        border-color: #d8dee4;
+        color: #94a3b8;
+    }
+    QCheckBox {
+        spacing: 6px;
+    }
+    QCheckBox::indicator {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1px solid #cbd5f5;
+        background-color: #f9fafb;
+    }
+    QCheckBox::indicator:checked {
+        background-color: #38bdf8;
+        border: 1px solid #38bdf8;
+    }
+    QSlider::groove:horizontal {
+        height: 6px;
+        background-color: #d1d5db;
+        border-radius: 3px;
+    }
+    QSlider::handle:horizontal {
+        width: 18px;
+        height: 18px;
+        margin: -7px 0;
+        border-radius: 9px;
+        background-color: #2563eb;
+    }
+    QProgressBar {
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        background-color: #f9fafb;
+        padding: 2px;
+        text-align: center;
+        color: #1f2937;
+    }
+    QProgressBar::chunk {
+        border-radius: 6px;
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+            stop:0 #22d3ee, stop:1 #2563eb);
+    }
+    QScrollBar:vertical {
+        background: transparent;
+        width: 10px;
+        margin: 0;
+    }
+    QScrollBar::handle:vertical {
+        background-color: #cbd5f5;
+        border-radius: 5px;
+    }
+    QScrollBar::handle:vertical:hover {
+        background-color: #94a3b8;
+    }
+    QToolTip {
+        background-color: #1f2937;
+        color: #f8fafc;
+        border: 1px solid #2563eb;
+        padding: 6px 10px;
+        border-radius: 6px;
+    }
+    QLabel#previewTitle {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1f2933;
+        padding-left: 6px;
+    }
+    QFrame#previewCard {
+        background-color: #ffffff;
+        border: 1px solid #d1d5db;
+        border-radius: 20px;
+    }
+    QFrame#headerCard {
+        background-color: #eff6ff;
+        border-radius: 20px;
+        border: 1px solid #bfdbfe;
+    }
+    QLabel#headerTitle {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1e3a8a;
+    }
+    QLabel#headerSubtitle {
+        font-size: 11px;
+        color: #4b5563;
+    }
+    QMessageBox {
+        background-color: #ffffff;
+    }
+    QMessageBox QLabel {
+        color: #1f2933;
+    }
+    QMessageBox QPushButton {
+        background-color: #e2e8f0;
+        border: 1px solid #cbd5f5;
+        border-radius: 6px;
+        padding: 6px 14px;
+        min-width: 70px;
+        color: #1f2933;
+        font-weight: 600;
+    }
+    QMessageBox QPushButton:hover {
+        background-color: #dbeafe;
+        border-color: #93c5fd;
+        color: #1e3a8a;
+    }
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Video Thumbnail Generator")
         self.resize(960, 720)
+        self.setStyleSheet(self.APP_STYLE)
 
         self.video_path: Optional[Path] = None
         self.video_info_label = QLabel("No video selected.")
@@ -118,7 +328,9 @@ class MainWindow(QMainWindow):
         self.preview_label = QLabel()
         self.preview_label.setAlignment(Qt.AlignCenter)
         self.preview_label.setMinimumSize(400, 225)
-        self.preview_label.setStyleSheet("border: 1px solid #CCC; background: #111;")
+        self.preview_label.setStyleSheet(
+            "border: 1px dashed #cbd5f5; background-color: #f9fafb; border-radius: 16px; color: #475569;"
+        )
         self.preview_label.setText("Select a video to preview.")
 
         self.selected_color = "#FFFFFF"
@@ -130,6 +342,9 @@ class MainWindow(QMainWindow):
         self.preview_worker_thread: Optional[QThread] = None
         self.preview_worker: Optional[PreviewWorker] = None
         self.preview_needs_refresh = False
+        self.video_duration: float = 0.0
+        self._syncing_timestamp = False
+        self.timestamp_slider_label: Optional[QLabel] = None
 
         self.preview_timer = QTimer(self)
         self.preview_timer.setSingleShot(True)
@@ -141,18 +356,70 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         central = QWidget()
-        root_layout = QHBoxLayout()
-        central.setLayout(root_layout)
+        central.setObjectName("rootSurface")
+        central_layout = QHBoxLayout()
+        central_layout.setContentsMargins(12, 12, 12, 12)
+        central_layout.setSpacing(12)
+        central.setLayout(central_layout)
         self.setCentralWidget(central)
 
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
+        central_layout.addWidget(splitter)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setStyleSheet("background: transparent;")
+        splitter.addWidget(scroll_area)
+
+        controls_container = QWidget()
+        controls_container.setObjectName("controlsContent")
         controls_layout = QVBoxLayout()
         controls_layout.setAlignment(Qt.AlignTop)
-        root_layout.addLayout(controls_layout, 2)
+        controls_layout.setSpacing(18)
+        controls_container.setLayout(controls_layout)
+        scroll_area.setWidget(controls_container)
 
+        preview_container = QWidget()
         preview_layout = QVBoxLayout()
-        preview_layout.addWidget(QLabel("Preview"))
-        preview_layout.addWidget(self.preview_label, stretch=1)
-        root_layout.addLayout(preview_layout, 3)
+        preview_layout.setAlignment(Qt.AlignTop)
+        preview_layout.setContentsMargins(4, 4, 4, 4)
+        preview_layout.setSpacing(12)
+        preview_container.setLayout(preview_layout)
+        splitter.addWidget(preview_container)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 2)
+        splitter.setSizes([360, 640])
+        self.main_splitter = splitter
+        self.controls_layout = controls_layout
+
+        preview_title = QLabel("Preview")
+        preview_title.setObjectName("previewTitle")
+        preview_layout.addWidget(preview_title)
+
+        preview_card = QFrame()
+        preview_card.setObjectName("previewCard")
+        preview_card_layout = QVBoxLayout()
+        preview_card_layout.setContentsMargins(16, 16, 16, 16)
+        preview_card_layout.addWidget(self.preview_label, stretch=1)
+        preview_card.setLayout(preview_card_layout)
+        preview_layout.addWidget(preview_card, stretch=1)
+
+        header_card = QFrame()
+        header_card.setObjectName("headerCard")
+        header_layout = QVBoxLayout()
+        header_layout.setContentsMargins(16, 16, 16, 16)
+        header_layout.setSpacing(4)
+        header_title = QLabel("Thumbnail Generator")
+        header_title.setObjectName("headerTitle")
+        header_description = QLabel("Create polished single or grid thumbnails in seconds.")
+        header_description.setObjectName("headerSubtitle")
+        header_description.setWordWrap(True)
+        header_layout.addWidget(header_title)
+        header_layout.addWidget(header_description)
+        header_card.setLayout(header_layout)
+        controls_layout.addWidget(header_card)
 
         # Video group
         video_group = QGroupBox("Video")
@@ -176,12 +443,25 @@ class MainWindow(QMainWindow):
         self.mode_combo.addItems(["Single Thumbnail", "Grid Thumbnail"])
         mode_form.addRow("Mode", self.mode_combo)
 
+        self.timestamp_slider = QSlider(Qt.Horizontal)
+        self.timestamp_slider.setRange(0, 0)
+        self.timestamp_slider.setEnabled(False)
+        self.timestamp_value_label = QLabel(self._format_timestamp(0.0))
+        timestamp_slider_layout = QHBoxLayout()
+        timestamp_slider_layout.addWidget(self.timestamp_slider, stretch=1)
+        timestamp_slider_layout.addWidget(self.timestamp_value_label)
+        self.timestamp_slider_container = QWidget()
+        self.timestamp_slider_container.setLayout(timestamp_slider_layout)
+        mode_form.addRow("Timestamp", self.timestamp_slider_container)
+        self.timestamp_slider_label = mode_form.labelForField(self.timestamp_slider_container)
+
         self.timestamp_spin = QDoubleSpinBox()
         self.timestamp_spin.setSuffix(" s")
         self.timestamp_spin.setDecimals(2)
         self.timestamp_spin.setSingleStep(0.5)
         self.timestamp_spin.setRange(0.0, 0.0)
-        mode_form.addRow("Timestamp", self.timestamp_spin)
+        mode_form.addRow("Exact (s)", self.timestamp_spin)
+        self.timestamp_spin_label = mode_form.labelForField(self.timestamp_spin)
 
         grid_container = QWidget()
         grid_layout = QHBoxLayout()
@@ -197,9 +477,12 @@ class MainWindow(QMainWindow):
         grid_layout.addWidget(self.cols_spin)
         grid_container.setLayout(grid_layout)
         mode_form.addRow("Grid Size", grid_container)
+        self.grid_container = grid_container
+        self.grid_container_label = mode_form.labelForField(grid_container)
 
         self.randomize_frames_checkbox = QCheckBox("Random frame sampling")
         mode_form.addRow("", self.randomize_frames_checkbox)
+        self.randomize_checkbox_label = mode_form.labelForField(self.randomize_frames_checkbox)
 
         mode_group.setLayout(mode_form)
         controls_layout.addWidget(mode_group)
@@ -222,16 +505,20 @@ class MainWindow(QMainWindow):
         opacity_container = QWidget()
         opacity_container.setLayout(opacity_layout)
         watermark_form.addRow("Opacity", opacity_container)
+        self.opacity_container = opacity_container
+        self.opacity_label = watermark_form.labelForField(opacity_container)
 
         self.position_combo = QComboBox()
         self.position_combo.addItems(
             ["top-left", "top-right", "center", "bottom-left", "bottom-right"]
         )
         watermark_form.addRow("Position", self.position_combo)
+        self.position_label = watermark_form.labelForField(self.position_combo)
 
         # Text watermark elements
         self.watermark_text_line = QLineEdit()
         watermark_form.addRow("Text", self.watermark_text_line)
+        self.watermark_text_label = watermark_form.labelForField(self.watermark_text_line)
 
         font_layout = QHBoxLayout()
         self.font_path_display = QLineEdit()
@@ -243,11 +530,14 @@ class MainWindow(QMainWindow):
         font_container = QWidget()
         font_container.setLayout(font_layout)
         watermark_form.addRow("Font", font_container)
+        self.font_container = font_container
+        self.font_container_label = watermark_form.labelForField(font_container)
 
         self.font_size_spin = QSpinBox()
         self.font_size_spin.setRange(8, 200)
         self.font_size_spin.setValue(48)
         watermark_form.addRow("Font Size", self.font_size_spin)
+        self.font_size_label = watermark_form.labelForField(self.font_size_spin)
 
         color_layout = QHBoxLayout()
         self.color_preview = QLabel("      ")
@@ -258,6 +548,8 @@ class MainWindow(QMainWindow):
         color_container = QWidget()
         color_container.setLayout(color_layout)
         watermark_form.addRow("Color", color_container)
+        self.color_container = color_container
+        self.color_label = watermark_form.labelForField(color_container)
 
         # Image watermark elements
         image_layout = QHBoxLayout()
@@ -269,6 +561,8 @@ class MainWindow(QMainWindow):
         image_container = QWidget()
         image_container.setLayout(image_layout)
         watermark_form.addRow("Image", image_container)
+        self.image_container = image_container
+        self.image_container_label = watermark_form.labelForField(image_container)
 
         self.image_scale_slider = QSlider(Qt.Horizontal)
         self.image_scale_slider.setRange(5, 100)
@@ -280,6 +574,8 @@ class MainWindow(QMainWindow):
         scale_container = QWidget()
         scale_container.setLayout(scale_layout)
         watermark_form.addRow("Scale", scale_container)
+        self.scale_container = scale_container
+        self.scale_container_label = watermark_form.labelForField(scale_container)
 
         watermark_group.setLayout(watermark_form)
         controls_layout.addWidget(watermark_group)
@@ -291,6 +587,17 @@ class MainWindow(QMainWindow):
         self.output_format_combo = QComboBox()
         self.output_format_combo.addItems(["jpg", "png"])
         output_form.addRow("Format", self.output_format_combo)
+
+        self.resize_checkbox = QCheckBox("Resize output")
+        output_form.addRow("Resize", self.resize_checkbox)
+        self.resize_checkbox_label = output_form.labelForField(self.resize_checkbox)
+
+        self.resize_combo = QComboBox()
+        self.resize_combo.setEnabled(False)
+        for label, size in self.RESIZE_PRESETS:
+            self.resize_combo.addItem(label, size)
+        output_form.addRow("Size Preset", self.resize_combo)
+        self.resize_combo_label = output_form.labelForField(self.resize_combo)
 
         output_path_layout = QHBoxLayout()
         self.output_path_line = QLineEdit()
@@ -322,6 +629,7 @@ class MainWindow(QMainWindow):
         controls_layout.addStretch(1)
         self._update_mode_controls()
         self._update_watermark_controls()
+        self._on_resize_toggled(self.resize_checkbox.isChecked())
 
     def _connect_signals(self) -> None:
         self.video_browse_btn.clicked.connect(self._select_video)
@@ -336,13 +644,16 @@ class MainWindow(QMainWindow):
         self.generate_btn.clicked.connect(self._generate_thumbnail)
         self.save_settings_btn.clicked.connect(self._save_settings)
         self.load_settings_btn.clicked.connect(self._load_settings)
+        self.timestamp_slider.valueChanged.connect(self._on_timestamp_slider_changed)
+        self.timestamp_spin.valueChanged.connect(self._on_timestamp_spin_changed)
+        self.resize_checkbox.toggled.connect(self._on_resize_toggled)
+        self.resize_combo.currentIndexChanged.connect(self._on_resize_combo_changed)
         self._register_preview_triggers()
 
     def _register_preview_triggers(self) -> None:
         schedule = lambda *_: self._schedule_preview_update()
 
         self.mode_combo.currentIndexChanged.connect(schedule)
-        self.timestamp_spin.valueChanged.connect(schedule)
         self.rows_spin.valueChanged.connect(schedule)
         self.cols_spin.valueChanged.connect(schedule)
         self.randomize_frames_checkbox.toggled.connect(self._on_randomize_toggled)
@@ -359,9 +670,77 @@ class MainWindow(QMainWindow):
             return
         self.preview_timer.start(delay)
 
+    @staticmethod
+    def _set_form_row_visible(widget: QWidget, label: Optional[QLabel], visible: bool) -> None:
+        widget.setVisible(visible)
+        if label:
+            label.setVisible(visible)
+
     def _on_randomize_toggled(self, checked: bool) -> None:
         self.random_seed = None
         self._schedule_preview_update()
+
+    def _on_resize_toggled(self, checked: bool) -> None:
+        self.resize_combo.setEnabled(checked)
+        self._set_form_row_visible(self.resize_combo, self.resize_combo_label, checked)
+        if checked and self.resize_combo.count() > 0:
+            self.resize_combo.setCurrentIndex(max(0, self.resize_combo.currentIndex()))
+        if not checked:
+            self._schedule_preview_update()
+        else:
+            self._schedule_preview_update(150)
+
+    def _on_resize_combo_changed(self, index: int) -> None:
+        if self.resize_checkbox.isChecked():
+            self._schedule_preview_update(150)
+
+    def _select_resize_preset(self, size: Tuple[int, int]) -> None:
+        self.resize_combo.blockSignals(True)
+        matched = False
+        for idx in range(self.resize_combo.count()):
+            data = self.resize_combo.itemData(idx)
+            if isinstance(data, tuple) and tuple(data) == tuple(size):
+                self.resize_combo.setCurrentIndex(idx)
+                matched = True
+                break
+        if not matched and self.resize_combo.count() > 0:
+            self.resize_combo.setCurrentIndex(0)
+        self.resize_combo.blockSignals(False)
+
+    def _on_timestamp_slider_changed(self, value: int) -> None:
+        if self._syncing_timestamp:
+            return
+        seconds = value / 1000.0
+        self._syncing_timestamp = True
+        self.timestamp_spin.blockSignals(True)
+        self.timestamp_spin.setValue(seconds)
+        self.timestamp_spin.blockSignals(False)
+        self.timestamp_value_label.setText(self._format_timestamp(seconds))
+        self._syncing_timestamp = False
+        if self.mode_combo.currentIndex() == 0:
+            self._schedule_preview_update(150)
+
+    def _on_timestamp_spin_changed(self, value: float) -> None:
+        if self._syncing_timestamp:
+            return
+        slider_value = int(value * 1000)
+        slider_value = max(0, min(slider_value, self.timestamp_slider.maximum()))
+        self._syncing_timestamp = True
+        self.timestamp_slider.blockSignals(True)
+        self.timestamp_slider.setValue(slider_value)
+        self.timestamp_slider.blockSignals(False)
+        self.timestamp_value_label.setText(self._format_timestamp(value))
+        self._syncing_timestamp = False
+        if self.mode_combo.currentIndex() == 0:
+            self._schedule_preview_update(150)
+
+    @staticmethod
+    def _format_timestamp(value: float) -> str:
+        if value < 0:
+            value = 0.0
+        minutes = int(value // 60)
+        seconds = value % 60
+        return f"{minutes:02d}:{seconds:05.2f}"
 
     def _start_preview_worker(self) -> None:
         if not self.video_path or not self.video_path.exists():
@@ -430,15 +809,26 @@ class MainWindow(QMainWindow):
             self.video_info_label.setText(
                 f"Duration: {duration_str} | Resolution: {info.resolution} | FPS: {info.fps:.2f}"
             )
+            self.video_duration = info.duration
             self.timestamp_spin.setRange(0.0, max(info.duration, 0.0))
             if info.duration > 0:
-                self.timestamp_spin.setValue(round(info.duration / 2.0, 2))
+                mid_value = round(info.duration / 2.0, 2)
+                self.timestamp_spin.setValue(mid_value)
+            slider_max = max(0, int(info.duration * 1000))
+            self.timestamp_slider.setRange(0, slider_max)
+            self.timestamp_slider.setEnabled(self.mode_combo.currentIndex() == 0 and slider_max > 0)
+            self.timestamp_slider.setValue(int(self.timestamp_spin.value() * 1000))
+            self.timestamp_value_label.setText(self._format_timestamp(self.timestamp_spin.value()))
         except Exception as exc:
             QMessageBox.critical(self, "Error", f"Failed to read video: {exc}")
             self.video_info_label.setText("Failed to read video metadata.")
             self.video_path = None
             self.video_path_line.clear()
             self.random_seed = None
+            self.video_duration = 0.0
+            self.timestamp_slider.setRange(0, 0)
+            self.timestamp_slider.setEnabled(False)
+            self.timestamp_value_label.setText(self._format_timestamp(0.0))
             self.preview_label.setPixmap(QPixmap())
             self.preview_label.setText("Select a video to preview.")
             return
@@ -452,9 +842,17 @@ class MainWindow(QMainWindow):
         mode = self.mode_combo.currentIndex()
         is_single = mode == 0
         self.timestamp_spin.setEnabled(is_single)
+        self.timestamp_slider.setEnabled(is_single and self.video_duration > 0)
+        self._set_form_row_visible(self.timestamp_slider_container, self.timestamp_slider_label, is_single)
+        self._set_form_row_visible(self.timestamp_spin, self.timestamp_spin_label, is_single)
+
         self.rows_spin.setEnabled(not is_single)
         self.cols_spin.setEnabled(not is_single)
         self.randomize_frames_checkbox.setEnabled(not is_single)
+        self._set_form_row_visible(self.grid_container, self.grid_container_label, not is_single)
+        self._set_form_row_visible(
+            self.randomize_frames_checkbox, self.randomize_checkbox_label, not is_single
+        )
         if is_single:
             self.random_seed = None
         self._schedule_preview_update()
@@ -463,6 +861,10 @@ class MainWindow(QMainWindow):
         selection = self.watermark_type_combo.currentText().lower()
         is_text = selection == "text"
         is_image = selection == "image"
+        show_common = selection != "none"
+
+        self.opacity_slider.setEnabled(show_common)
+        self.position_combo.setEnabled(show_common)
 
         for widget in [
             self.watermark_text_line,
@@ -481,8 +883,19 @@ class MainWindow(QMainWindow):
         ]:
             widget.setEnabled(is_image)
 
-        self.position_combo.setEnabled(selection != "none")
-        self.opacity_slider.setEnabled(selection != "none")
+        self._set_form_row_visible(self.opacity_container, self.opacity_label, show_common)
+        self._set_form_row_visible(self.position_combo, self.position_label, show_common)
+
+        self._set_form_row_visible(
+            self.watermark_text_line, self.watermark_text_label, is_text
+        )
+        self._set_form_row_visible(self.font_container, self.font_container_label, is_text)
+        self._set_form_row_visible(self.font_size_spin, self.font_size_label, is_text)
+        self._set_form_row_visible(self.color_container, self.color_label, is_text)
+
+        self._set_form_row_visible(self.image_container, self.image_container_label, is_image)
+        self._set_form_row_visible(self.scale_container, self.scale_container_label, is_image)
+
         self._schedule_preview_update()
 
     def _on_opacity_changed(self, value: int) -> None:
@@ -557,6 +970,12 @@ class MainWindow(QMainWindow):
         else:
             self.random_seed = None
 
+        resize_to: Optional[Tuple[int, int]] = None
+        if self.resize_checkbox.isChecked():
+            data = self.resize_combo.currentData()
+            if isinstance(data, tuple) and len(data) == 2:
+                resize_to = (int(data[0]), int(data[1]))
+
         return ThumbnailSettings(
             mode=mode,
             timestamp=timestamp,
@@ -566,6 +985,7 @@ class MainWindow(QMainWindow):
             random_seed=self.random_seed,
             output_path=Path(output_path),
             output_format=output_format,
+            resize_to=resize_to,
         )
 
     def _gather_watermark_settings(self) -> WatermarkSettings:
@@ -684,6 +1104,18 @@ class MainWindow(QMainWindow):
         if format_index != -1:
             self.output_format_combo.setCurrentIndex(format_index)
         self.random_seed = thumb.random_seed if thumb.randomize else None
+
+        self.resize_checkbox.blockSignals(True)
+        self.resize_checkbox.setChecked(thumb.resize_to is not None)
+        self.resize_checkbox.blockSignals(False)
+        if thumb.resize_to:
+            self._select_resize_preset(tuple(thumb.resize_to))
+        else:
+            self.resize_combo.blockSignals(True)
+            if self.resize_combo.count() > 0:
+                self.resize_combo.setCurrentIndex(0)
+            self.resize_combo.blockSignals(False)
+        self._on_resize_toggled(self.resize_checkbox.isChecked())
 
         self.watermark_type_combo.setCurrentIndex(
             {"none": 0, "text": 1, "image": 2}.get(water.kind, 0)

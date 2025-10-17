@@ -22,6 +22,8 @@ class PersistedSettings:
     def to_dict(self) -> Dict[str, Any]:
         thumb_dict = asdict(self.thumbnail)
         thumb_dict["output_path"] = str(thumb_dict.get("output_path", ""))
+        if thumb_dict.get("resize_to"):
+            thumb_dict["resize_to"] = list(thumb_dict["resize_to"])
 
         water_dict = asdict(self.watermark)
         if water_dict.get("font_path"):
@@ -50,6 +52,10 @@ class PersistedSettings:
                 ),
                 output_path=Path(thumb_data.get("output_path", "thumbnail.jpg")),
                 output_format=thumb_data.get("output_format", "jpg"),
+                resize_to=tuple(thumb_data["resize_to"])
+                if isinstance(thumb_data.get("resize_to"), (list, tuple))
+                and len(thumb_data["resize_to"]) == 2
+                else None,
             ),
             watermark=WatermarkSettings(
                 kind=water_data.get("kind", "none"),
