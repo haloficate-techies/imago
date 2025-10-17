@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 
 from PIL import Image
 from PyQt5.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QImage, QPixmap
+from PyQt5.QtGui import QColor, QImage, QPalette, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QListView,
     QFrame,
     QLabel,
     QLineEdit,
@@ -190,6 +191,29 @@ class MainWindow(QMainWindow):
     }
     QComboBox QListView::item:selected,
     QComboBox QAbstractItemView::item:selected {
+        background-color: #dbeafe;
+        color: #1e3a8a;
+    }
+    QListView {
+        background-color: #ffffff;
+        border: 1px solid #cbd5f5;
+        border-radius: 8px;
+        color: #1f2933;
+        padding: 4px 0;
+        outline: none;
+        selection-background-color: #dbeafe;
+        selection-color: #1e3a8a;
+    }
+    QListView::item {
+        background-color: #ffffff;
+        color: #1f2933;
+        padding: 6px 12px;
+    }
+    QListView::item:hover {
+        background-color: #e0f2fe;
+        color: #1d4ed8;
+    }
+    QListView::item:selected {
         background-color: #dbeafe;
         color: #1e3a8a;
     }
@@ -626,10 +650,61 @@ class MainWindow(QMainWindow):
         controls_layout.addWidget(self.generate_btn)
         controls_layout.addWidget(self.progress_bar)
 
+        self._apply_combo_popup_styles()
+
         controls_layout.addStretch(1)
         self._update_mode_controls()
         self._update_watermark_controls()
         self._on_resize_toggled(self.resize_checkbox.isChecked())
+
+    def _apply_combo_popup_styles(self) -> None:
+        popup_style = """
+            QListView {
+                background-color: #ffffff;
+                border: 1px solid #cbd5f5;
+                border-radius: 8px;
+                color: #1f2933;
+                padding: 4px 0;
+                outline: none;
+                selection-background-color: #dbeafe;
+                selection-color: #1e3a8a;
+            }
+            QListView::item {
+                background-color: #ffffff;
+                color: #1f2933;
+                padding: 6px 12px;
+            }
+            QListView::item:hover {
+                background-color: #e0f2fe;
+                color: #1d4ed8;
+            }
+            QListView::item:selected {
+                background-color: #dbeafe;
+                color: #1e3a8a;
+            }
+        """
+        combos = [
+            self.mode_combo,
+            self.watermark_type_combo,
+            self.position_combo,
+            self.output_format_combo,
+            self.resize_combo,
+        ]
+        for combo in combos:
+            view = combo.view()
+            if isinstance(view, QListView):
+                view.setStyleSheet(popup_style)
+            else:
+                view.viewport().setStyleSheet(popup_style)
+            palette = view.palette()
+            palette.setColor(QPalette.Base, QColor("#ffffff"))
+            palette.setColor(QPalette.Text, QColor("#1f2933"))
+            palette.setColor(QPalette.Highlight, QColor("#dbeafe"))
+            palette.setColor(QPalette.HighlightedText, QColor("#1e3a8a"))
+            view.setPalette(palette)
+            view.viewport().setPalette(palette)
+            view.setAutoFillBackground(True)
+            view.viewport().setAutoFillBackground(True)
 
     def _connect_signals(self) -> None:
         self.video_browse_btn.clicked.connect(self._select_video)
