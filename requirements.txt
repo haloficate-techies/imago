@@ -1,0 +1,5 @@
+PyQt5>=5.15,<6
+moviepy>=1.0.3
+Pillow>=10.0.0
+imageio-ffmpeg>=0.4.9
+imageio>=2.31.0
