@@ -6,9 +6,11 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from PIL import Image
-from PyQt5.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QImage, QPalette, QPixmap
+from PyQt5.QtCore import QObject, Qt, QThread, QTimer, QEvent, QPointF, pyqtSignal
+from PyQt5.QtGui import QColor, QImage, QPalette, QPixmap, QWheelEvent
 from PyQt5.QtWidgets import (
+    QAbstractScrollArea,
+    QAbstractSpinBox,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -17,6 +19,7 @@ from PyQt5.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QLayout,
     QListView,
     QFrame,
     QLabel,
@@ -108,6 +111,47 @@ class PreviewWorker(QObject):
             self.finished.emit(pixmap)
         except Exception as exc:  # pragma: no cover - GUI error handling
             self.error.emit(str(exc))
+
+
+class HoverScrollBlocker(QObject):
+    """Prevents accidental value changes from scroll-wheel hover."""
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Wheel:
+            allow = bool(obj.hasFocus())
+            parent = obj.parent()
+            if not allow and isinstance(parent, QWidget):
+                allow = parent.hasFocus()
+            if isinstance(obj, QComboBox):
+                view = obj.view()
+                if view and view.isVisible():
+                    allow = True
+            if not allow:
+                parent = obj.parent()
+                while parent and not isinstance(parent, QAbstractScrollArea):
+                    parent = parent.parent()
+                if isinstance(parent, QAbstractScrollArea):
+                    mapped = obj.mapTo(parent.viewport(), event.pos())
+                    global_pos = (
+                        event.globalPosition()
+                        if hasattr(event, "globalPosition")
+                        else QPointF(event.globalPos())
+                    )
+                    phase = event.phase() if hasattr(event, "phase") else Qt.NoScrollPhase
+                    inverted = event.inverted() if hasattr(event, "inverted") else False
+                    clone = QWheelEvent(
+                        QPointF(mapped),
+                        global_pos,
+                        event.pixelDelta(),
+                        event.angleDelta(),
+                        event.buttons(),
+                        event.modifiers(),
+                        phase,
+                        inverted,
+                    )
+                    QApplication.sendEvent(parent.viewport(), clone)
+                return True
+        return super().eventFilter(obj, event)
 
 
 class MainWindow(QMainWindow):
@@ -369,6 +413,9 @@ class MainWindow(QMainWindow):
         self.video_duration: float = 0.0
         self._syncing_timestamp = False
         self.timestamp_slider_label: Optional[QLabel] = None
+        self.sidebar_scroll: Optional[QScrollArea] = None
+        self.controls_container: Optional[QWidget] = None
+        self._wheel_guard = HoverScrollBlocker(self)
 
         self.preview_timer = QTimer(self)
         self.preview_timer.setSingleShot(True)
@@ -377,6 +424,7 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._connect_signals()
+        self._install_scroll_wheel_guards()
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -392,9 +440,11 @@ class MainWindow(QMainWindow):
         central_layout.addWidget(splitter)
 
         scroll_area = QScrollArea()
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
         scroll_area.setStyleSheet("background: transparent;")
+        scroll_area.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
         splitter.addWidget(scroll_area)
 
         controls_container = QWidget()
@@ -402,8 +452,11 @@ class MainWindow(QMainWindow):
         controls_layout = QVBoxLayout()
         controls_layout.setAlignment(Qt.AlignTop)
         controls_layout.setSpacing(18)
+        controls_layout.setSizeConstraint(QLayout.SetMinimumSize)
         controls_container.setLayout(controls_layout)
         scroll_area.setWidget(controls_container)
+        self.sidebar_scroll = scroll_area
+        self.controls_container = controls_container
 
         preview_container = QWidget()
         preview_layout = QVBoxLayout()
@@ -414,7 +467,6 @@ class MainWindow(QMainWindow):
         splitter.addWidget(preview_container)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 2)
-        splitter.setSizes([360, 640])
         self.main_splitter = splitter
         self.controls_layout = controls_layout
 
@@ -656,6 +708,46 @@ class MainWindow(QMainWindow):
         self._update_mode_controls()
         self._update_watermark_controls()
         self._on_resize_toggled(self.resize_checkbox.isChecked())
+        self._sync_sidebar_width()
+        QTimer.singleShot(0, self._sync_sidebar_width)
+
+    def _install_scroll_wheel_guards(self) -> None:
+        targets = [
+            getattr(self, "mode_combo", None),
+            getattr(self, "watermark_type_combo", None),
+            getattr(self, "position_combo", None),
+            getattr(self, "output_format_combo", None),
+            getattr(self, "resize_combo", None),
+            getattr(self, "timestamp_spin", None),
+            getattr(self, "rows_spin", None),
+            getattr(self, "cols_spin", None),
+            getattr(self, "font_size_spin", None),
+        ]
+        for widget in targets:
+            if widget:
+                widget.installEventFilter(self._wheel_guard)
+                if isinstance(widget, (QComboBox, QAbstractSpinBox)):
+                    widget.setFocusPolicy(Qt.StrongFocus)
+                if isinstance(widget, QAbstractSpinBox):
+                    editor = widget.lineEdit()
+                    if editor:
+                        editor.installEventFilter(self._wheel_guard)
+                if isinstance(widget, QComboBox) and widget.isEditable():
+                    editor = widget.lineEdit()
+                    if editor:
+                        editor.installEventFilter(self._wheel_guard)
+
+    def _sync_sidebar_width(self) -> None:
+        if not self.sidebar_scroll or not self.controls_container:
+            return
+        content_width = self.controls_container.sizeHint().width()
+        if content_width <= 0:
+            return
+        self.controls_container.setMinimumWidth(content_width)
+        scrollbar_width = self.sidebar_scroll.verticalScrollBar().sizeHint().width()
+        frame_width = self.sidebar_scroll.frameWidth() * 2
+        target_width = content_width + scrollbar_width + frame_width
+        self.sidebar_scroll.setMinimumWidth(target_width)
 
     def _apply_combo_popup_styles(self) -> None:
         popup_style = """
@@ -764,6 +856,7 @@ class MainWindow(QMainWindow):
             self._schedule_preview_update()
         else:
             self._schedule_preview_update(150)
+        self._sync_sidebar_width()
 
     def _on_resize_combo_changed(self, index: int) -> None:
         if self.resize_checkbox.isChecked():
@@ -931,6 +1024,7 @@ class MainWindow(QMainWindow):
         if is_single:
             self.random_seed = None
         self._schedule_preview_update()
+        self._sync_sidebar_width()
 
     def _update_watermark_controls(self) -> None:
         selection = self.watermark_type_combo.currentText().lower()
@@ -972,6 +1066,7 @@ class MainWindow(QMainWindow):
         self._set_form_row_visible(self.scale_container, self.scale_container_label, is_image)
 
         self._schedule_preview_update()
+        self._sync_sidebar_width()
 
     def _on_opacity_changed(self, value: int) -> None:
         self.opacity_value_label.setText(f"{value}%")
