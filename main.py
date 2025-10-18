@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 
 from PIL import Image
 from PyQt5.QtCore import QObject, Qt, QThread, QTimer, QEvent, QPointF, pyqtSignal
-from PyQt5.QtGui import QColor, QImage, QPalette, QPixmap, QWheelEvent
+from PyQt5.QtGui import QColor, QIcon, QImage, QPalette, QPixmap, QWheelEvent
 from PyQt5.QtWidgets import (
     QAbstractScrollArea,
     QAbstractSpinBox,
@@ -40,6 +40,17 @@ from PyQt5.QtWidgets import (
 from settings_manager import DEFAULT_SETTINGS_PATH, PersistedSettings, SettingsManager
 from thumbnail_generator import ThumbnailGenerator, ThumbnailSettings
 from watermark_manager import WatermarkSettings
+
+
+def resource_path(relative: str) -> Path:
+    """Resolve resource paths when frozen by PyInstaller or running from source."""
+    base_path = getattr(sys, "_MEIPASS", None)
+    if base_path:
+        return Path(base_path) / relative
+    return Path(__file__).resolve().parent / relative
+
+
+APP_ICON_PATH = "assets/icon.ico"
 
 
 def pil_to_pixmap(image: Image.Image) -> QPixmap:
@@ -386,9 +397,12 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Video Thumbnail Generator")
+        self.setWindowTitle("Imago | Thumbnail Generator ")
         self.resize(960, 720)
         self.setStyleSheet(self.APP_STYLE)
+        icon_path = resource_path(APP_ICON_PATH)
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         self.video_path: Optional[Path] = None
         self.video_info_label = QLabel("No video selected.")
@@ -1328,6 +1342,9 @@ class MainWindow(QMainWindow):
 
 def main() -> None:
     app = QApplication(sys.argv)
+    icon_path = resource_path(APP_ICON_PATH)
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
